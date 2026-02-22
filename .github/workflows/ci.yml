@@ -1,0 +1,71 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+        build_type: [Debug, Release]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build clang
+
+      - name: Configure
+        env:
+          CC: ${{ matrix.compiler == 'gcc' && 'gcc' || 'clang' }}
+          CXX: ${{ matrix.compiler == 'gcc' && 'g++' || 'clang++' }}
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCRISP_BUILD_TESTS=ON \
+            -DCRISP_BUILD_TOOLS=ON \
+            -DCRISP_WERROR=ON
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  sanitizers:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build clang
+
+      - name: Configure (ASAN+UBSAN)
+        env:
+          CC: clang
+          CXX: clang++
+        run: |
+          cmake -S . -B build-sanitizers -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCRISP_BUILD_TESTS=ON \
+            -DCRISP_BUILD_TOOLS=ON \
+            -DCRISP_ENABLE_ASAN=ON \
+            -DCRISP_ENABLE_UBSAN=ON \
+            -DCRISP_WERROR=ON
+
+      - name: Build
+        run: cmake --build build-sanitizers --parallel
+
+      - name: Test
+        run: ctest --test-dir build-sanitizers --output-on-failure
